@@ -38,3 +38,11 @@ export interface ConversationDetail
 	extends Omit<Conversation, "document_count"> {
 	documents: Document[];
 }
+
+/** What the reader panel is currently being asked to show. */
+export interface ViewerTarget {
+	documentId: string;
+	page: number;
+	/** Text to highlight on that page, when the jump came from a citation. */
+	quote?: string;
+}

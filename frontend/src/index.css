@@ -134,6 +134,35 @@ body {
 	font-weight: 600;
 }
 
+/* Citation highlight in the PDF text layer.
+   The text layer sits invisibly over the rendered page, so the highlight is painted
+   as a translucent background behind transparent glyphs — colouring the text itself
+   would make it double-render against the canvas underneath. */
+.react-pdf__Page__textContent mark.citation-highlight {
+	background-color: rgba(250, 204, 21, 0.42);
+	border-radius: 2px;
+	color: transparent;
+	box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.42);
+	animation: citation-flash 1.1s ease-out 1;
+}
+
+@keyframes citation-flash {
+	0% {
+		background-color: rgba(250, 204, 21, 0.9);
+		box-shadow: 0 0 0 4px rgba(250, 204, 21, 0.55);
+	}
+	100% {
+		background-color: rgba(250, 204, 21, 0.42);
+		box-shadow: 0 0 0 2px rgba(250, 204, 21, 0.42);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.react-pdf__Page__textContent mark.citation-highlight {
+		animation: none;
+	}
+}
+
 /* Inline citation markers. The server leaves "[n]" in the prose; the client swaps each
    one whose citation exists for a marker, so the evidence sits beside the claim it
    supports. Styled as a superscript chip rather than a link — it points at a page of a

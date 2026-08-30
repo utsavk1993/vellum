@@ -89,3 +89,7 @@ export async function uploadDocument(
 	});
 	return handleResponse<Document>(res);
 }
+
+export function getDocumentUrl(documentId: string): string {
+	return `${BASE}/documents/${documentId}/content`;
+}

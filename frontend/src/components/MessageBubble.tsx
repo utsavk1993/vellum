@@ -4,7 +4,7 @@ import { Streamdown } from "streamdown";
 import type { Citation, Document, Message } from "../types";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
-/** Href scheme used to make an inline marker distinguishable without leaving markdown. */
+/** Href scheme used to make an inline marker clickable without leaving markdown. */
 const CITE_HREF = "#citation-";
 
 /**
@@ -14,7 +14,8 @@ const CITE_HREF = "#citation-";
  * evidence sits next to the claim it supports, which is how a lawyer reads a cited
  * document. Doing it as a link keeps the markdown intact: the alternative, splitting
  * the text and rendering fragments, breaks any block the marker happens to sit inside
- * (tables and lists especially). The rendered anchor is styled into a superscript chip.
+ * (tables and lists especially). The rendered anchor is styled into a superscript chip
+ * and opens the reader panel at the page it cites.
  *
  * Only markers with a matching citation are converted, so a literal `[2015]` in a case
  * reference stays plain text.
@@ -36,6 +37,7 @@ function filenameOf(documents: Document[], documentId: string): string {
 interface CitationSummaryProps {
 	citations: Citation[];
 	documents: Document[];
+	onCitationClick: (citation: Citation) => void;
 }
 
 /**
@@ -47,7 +49,11 @@ interface CitationSummaryProps {
  * failed verification, without hovering markers one at a time. That is the claim this
  * product actually makes, so it stays — as a line rather than a wall.
  */
-function CitationSummary({ citations, documents }: CitationSummaryProps) {
+function CitationSummary({
+	citations,
+	documents,
+	onCitationClick,
+}: CitationSummaryProps) {
 	const [expanded, setExpanded] = useState(false);
 	if (citations.length === 0) return null;
 
@@ -83,12 +89,20 @@ function CitationSummary({ citations, documents }: CitationSummaryProps) {
 			{expanded && (
 				<div className="mt-2 flex flex-wrap gap-1.5">
 					{citations.map((citation) => (
-						<span
+						<button
 							key={citation.ordinal}
-							className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs ${
+							type="button"
+							onClick={() => onCitationClick(citation)}
+							aria-label={`Source ${citation.ordinal}, ${filenameOf(
+								documents,
+								citation.document_id,
+							)} page ${citation.page_number} — ${
+								citation.verified ? "verified" : "could not be verified"
+							}`}
+							className={`inline-flex max-w-full items-center gap-1.5 rounded-md border px-2 py-1 text-xs transition-colors ${
 								citation.verified
-									? "border-neutral-200 bg-white text-neutral-600"
-									: "border-amber-300 bg-amber-50 text-amber-800"
+									? "border-neutral-200 bg-white text-neutral-600 hover:border-neutral-400"
+									: "border-amber-300 bg-amber-50 text-amber-800 hover:border-amber-500"
 							}`}
 						>
 							<span
@@ -119,7 +133,7 @@ function CitationSummary({ citations, documents }: CitationSummaryProps) {
 									aria-label="Could not be verified"
 								/>
 							)}
-						</span>
+						</button>
 					))}
 				</div>
 			)}
@@ -132,6 +146,7 @@ interface AnswerBodyProps {
 	citations: Citation[];
 	documents: Document[];
 	streaming?: boolean;
+	onCitationClick: (citation: Citation) => void;
 }
 
 /** Markdown answer with inline citation markers. */
@@ -140,6 +155,7 @@ function AnswerBody({
 	citations,
 	documents,
 	streaming,
+	onCitationClick,
 }: AnswerBodyProps) {
 	const linked = useMemo(
 		() => linkCitations(content, citations),
@@ -175,19 +191,17 @@ function AnswerBody({
 				return (
 					<Tooltip>
 						<TooltipTrigger asChild>
-							<span
-								tabIndex={0}
-								role="note"
+							<button
+								type="button"
 								data-citation={citation.verified ? "verified" : "unverified"}
 								aria-label={`Source ${ordinal}: ${filenameOf(
 									documents,
 									citation.document_id,
-								)}, page ${citation.page_number}, ${
-									citation.verified ? "verified" : "could not be verified"
-								}`}
+								)}, page ${citation.page_number}`}
+								onClick={() => onCitationClick(citation)}
 							>
 								{ordinal}
-							</span>
+							</button>
 						</TooltipTrigger>
 						<TooltipContent side="top" className="max-w-md">
 							<p className="mb-0.5 text-xs font-medium">
@@ -195,7 +209,7 @@ function AnswerBody({
 							</p>
 							<p className="mb-1.5 text-[11px] opacity-80">
 								{citation.verified
-									? `Page ${citation.page_number}`
+									? `Page ${citation.page_number} — click to open`
 									: `Page ${citation.page_number} — could not be found on this page`}
 							</p>
 							<p className="text-xs italic leading-relaxed opacity-90">
@@ -206,7 +220,7 @@ function AnswerBody({
 				);
 			},
 		}),
-		[citations, documents],
+		[citations, documents, onCitationClick],
 	);
 
 	return (
@@ -224,9 +238,14 @@ function AnswerBody({
 interface MessageBubbleProps {
 	message: Message;
 	documents: Document[];
+	onCitationClick: (citation: Citation) => void;
 }
 
-export function MessageBubble({ message, documents }: MessageBubbleProps) {
+export function MessageBubble({
+	message,
+	documents,
+	onCitationClick,
+}: MessageBubbleProps) {
 	if (message.role === "user") {
 		return (
 			<div className="flex justify-end py-2">
@@ -252,6 +271,7 @@ export function MessageBubble({ message, documents }: MessageBubbleProps) {
 				content={message.content}
 				citations={message.citations}
 				documents={documents}
+				onCitationClick={onCitationClick}
 			/>
 			{uncited && (
 				<p className="mt-2.5 flex items-start gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-xs text-amber-800">
@@ -262,7 +282,11 @@ export function MessageBubble({ message, documents }: MessageBubbleProps) {
 					</span>
 				</p>
 			)}
-			<CitationSummary citations={message.citations} documents={documents} />
+			<CitationSummary
+				citations={message.citations}
+				documents={documents}
+				onCitationClick={onCitationClick}
+			/>
 		</div>
 	);
 }
@@ -271,12 +295,14 @@ interface StreamingBubbleProps {
 	content: string;
 	citations: Citation[];
 	documents: Document[];
+	onCitationClick: (citation: Citation) => void;
 }
 
 export function StreamingBubble({
 	content,
 	citations,
 	documents,
+	onCitationClick,
 }: StreamingBubbleProps) {
 	if (!content) return null;
 
@@ -287,6 +313,7 @@ export function StreamingBubble({
 				citations={citations}
 				documents={documents}
 				streaming
+				onCitationClick={onCitationClick}
 			/>
 		</div>
 	);
