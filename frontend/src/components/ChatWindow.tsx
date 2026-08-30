@@ -1,9 +1,9 @@
 import { AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
-import type { Document, Message } from "../types";
+import type { Citation, Document, Message } from "../types";
 import { ChatInput } from "./ChatInput";
 import { EmptyState } from "./EmptyState";
-import { MessageBubble } from "./MessageBubble";
+import { MessageBubble, StreamingBubble } from "./MessageBubble";
 import { ScrollArea } from "./ui/scroll-area";
 
 interface ChatWindowProps {
@@ -13,6 +13,7 @@ interface ChatWindowProps {
 	error: string | null;
 	streaming: boolean;
 	streamingContent: string;
+	streamingCitations: Citation[];
 	uploading: number;
 	conversationId: string | null;
 	conversationTitle: string | null;
@@ -28,6 +29,7 @@ export function ChatWindow({
 	error,
 	streaming,
 	streamingContent,
+	streamingCitations,
 	uploading,
 	conversationId,
 	conversationTitle,
@@ -115,19 +117,18 @@ export function ChatWindow({
 				) : (
 					<div className="mx-auto max-w-3xl space-y-5 px-4 py-6">
 						{messages.map((message) => (
-							<MessageBubble key={message.id} message={message} />
+							<MessageBubble
+								key={message.id}
+								message={message}
+								documents={documents}
+							/>
 						))}
 
 						{streaming && streamingContent && (
-							<MessageBubble
-								streaming
-								message={{
-									id: "streaming",
-									conversation_id: conversationId,
-									role: "assistant",
-									content: streamingContent,
-									created_at: new Date().toISOString(),
-								}}
+							<StreamingBubble
+								content={streamingContent}
+								citations={streamingCitations}
+								documents={documents}
 							/>
 						)}
 

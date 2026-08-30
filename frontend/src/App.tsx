@@ -23,6 +23,7 @@ export default function App() {
 		error: messagesError,
 		streaming,
 		streamingContent,
+		streamingCitations,
 		send,
 	} = useMessages(selectedId);
 
@@ -69,6 +70,7 @@ export default function App() {
 					error={messagesError ?? documentsError}
 					streaming={streaming}
 					streamingContent={streamingContent}
+					streamingCitations={streamingCitations}
 					uploading={uploading}
 					conversationId={selectedId}
 					conversationTitle={selected?.title ?? null}
