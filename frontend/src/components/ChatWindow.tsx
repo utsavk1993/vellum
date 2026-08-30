@@ -1,4 +1,4 @@
-import { Loader2 } from "lucide-react";
+import { AlertTriangle, FileText, Loader2 } from "lucide-react";
 import { useEffect, useRef } from "react";
 import type { Document, Message } from "../types";
 import { ChatInput } from "./ChatInput";
@@ -13,11 +13,11 @@ interface ChatWindowProps {
 	error: string | null;
 	streaming: boolean;
 	streamingContent: string;
-	uploading: boolean;
+	uploading: number;
 	conversationId: string | null;
 	conversationTitle: string | null;
 	onSend: (content: string) => void;
-	onUpload: (file: File) => void;
+	onUpload: (files: File[]) => void;
 	onNewConversation: () => void;
 }
 
@@ -68,9 +68,28 @@ export function ChatWindow({
 					{conversationTitle ?? "New Conversation"}
 				</h1>
 				{documents.length > 0 && (
-					<span className="text-xs text-neutral-400">
-						{documents[0]?.filename}
-					</span>
+					<div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
+						{documents.map((document) => (
+							<span
+								key={document.id}
+								title={`${document.filename} · ${document.page_count} pages`}
+								className="flex flex-shrink-0 items-center gap-1 rounded-md border border-neutral-200 px-2 py-0.5 text-xs text-neutral-500"
+							>
+								<FileText className="h-3 w-3" />
+								<span className="max-w-[10rem] truncate">
+									{document.filename}
+								</span>
+								{/* A scan indexes to nothing. Saying so here stops it being
+								    mistaken for a document the agent has read. */}
+								{!document.has_text && (
+									<AlertTriangle
+										className="h-3 w-3 text-amber-600"
+										aria-label="No extractable text"
+									/>
+								)}
+							</span>
+						))}
+					</div>
 				)}
 			</header>
 
@@ -89,7 +108,7 @@ export function ChatWindow({
 					<div className="flex h-full items-center justify-center py-16">
 						<EmptyState
 							onUpload={onUpload}
-							uploading={uploading}
+							uploading={uploading > 0}
 							documentCount={documents.length}
 						/>
 					</div>
@@ -115,7 +134,7 @@ export function ChatWindow({
 						{streaming && !streamingContent && (
 							<div className="flex items-center gap-2 text-sm text-neutral-400">
 								<Loader2 className="h-4 w-4 animate-spin" />
-								Reading the document…
+								Searching the documents…
 							</div>
 						)}
 

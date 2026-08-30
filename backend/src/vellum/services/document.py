@@ -40,6 +40,9 @@ async def upload_document(
 ) -> Document:
     """Save a PDF, index it page by page, and attach it to the conversation.
 
+    A conversation holds as many documents as the deal needs — the lawyers this is
+    built for review dozens per matter, and cross-document questions are the point.
+
     Raises ValueError if the file is not a PDF or exceeds the size limit.
     """
     if file.content_type not in ("application/pdf", "application/x-pdf"):
@@ -102,7 +105,7 @@ async def get_document(session: AsyncSession, document_id: str) -> Document | No
 
 
 async def list_documents(session: AsyncSession, conversation_id: str) -> list[Document]:
-    """Documents attached to a conversation, oldest first."""
+    """Every document attached to a conversation, oldest first."""
     result = await session.execute(
         select(Document)
         .where(Document.conversation_id == conversation_id)

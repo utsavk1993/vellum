@@ -2,14 +2,14 @@ import { FileSearch } from "lucide-react";
 import { DocumentUpload } from "./DocumentUpload";
 
 interface EmptyStateProps {
-	onUpload: (file: File) => void;
+	onUpload: (files: File[]) => void;
 	uploading?: boolean;
 	documentCount: number;
 }
 
 const SUGGESTIONS = [
 	"What are the break rights, and what conditions attach to them?",
-	"How is the rent reviewed, and on what basis?",
+	"Do the lease and the title report describe the same property?",
 	"Flag anything that would concern a buyer at completion.",
 ];
 
@@ -18,7 +18,7 @@ export function EmptyState({
 	uploading,
 	documentCount,
 }: EmptyStateProps) {
-	// A document is loaded but nothing has been asked yet — prompt the question
+	// Documents are indexed but nothing has been asked yet — prompt the question
 	// rather than the upload.
 	if (documentCount > 0) {
 		return (
@@ -27,10 +27,11 @@ export function EmptyState({
 					<FileSearch className="h-6 w-6 text-white" />
 				</div>
 				<h2 className="mb-1.5 text-lg font-semibold text-neutral-800">
-					Document ready
+					{documentCount} document{documentCount === 1 ? "" : "s"} ready
 				</h2>
 				<p className="mb-6 text-sm text-neutral-500">
-					Ask anything about it.
+					Ask anything about them. Every factual claim comes back with the
+					clause it rests on, checked against the source.
 				</p>
 				<ul className="w-full space-y-1.5 text-left">
 					{SUGGESTIONS.map((suggestion) => (
@@ -52,10 +53,11 @@ export function EmptyState({
 				<FileSearch className="h-6 w-6 text-white" />
 			</div>
 			<h2 className="mb-1.5 text-lg font-semibold text-neutral-800">
-				Start with the document
+				Start with the documents
 			</h2>
 			<p className="mb-7 max-w-sm text-center text-sm text-neutral-500">
-				Upload a lease, a title report or a survey, and ask questions about it.
+				Add every document for the matter — leases, title reports, environmental
+				assessments. Answers cite across all of them.
 			</p>
 			<DocumentUpload onUpload={onUpload} uploading={uploading} />
 		</div>

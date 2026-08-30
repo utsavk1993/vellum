@@ -5,10 +5,10 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
 
 interface ChatInputProps {
 	onSend: (content: string) => void;
-	onUpload: (file: File) => void;
+	onUpload: (files: File[]) => void;
 	disabled: boolean;
 	documentCount: number;
-	uploading: boolean;
+	uploading: number;
 }
 
 export function ChatInput({
@@ -49,12 +49,19 @@ export function ChatInput({
 
 	const handleFileChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
-			const file = e.target.files?.[0];
-			if (file) onUpload(file);
+			const files = Array.from(e.target.files ?? []);
+			if (files.length > 0) onUpload(files);
 			if (fileInputRef.current) fileInputRef.current.value = "";
 		},
 		[onUpload],
 	);
+
+	const placeholder =
+		documentCount === 0
+			? "Upload a document to get started…"
+			: documentCount === 1
+				? "Ask a question about this document…"
+				: `Ask across all ${documentCount} documents…`;
 
 	return (
 		<div className="border-t border-neutral-200 bg-white px-3 py-3">
@@ -65,24 +72,29 @@ export function ChatInput({
 							variant="ghost"
 							size="icon"
 							className="h-8 w-8 flex-shrink-0"
-							aria-label="Attach a PDF"
-							disabled={uploading}
+							aria-label="Attach PDFs"
+							disabled={uploading > 0}
 							onClick={() => fileInputRef.current?.click()}
 						>
-							{uploading ? (
+							{uploading > 0 ? (
 								<Loader2 className="h-4 w-4 animate-spin text-neutral-500" />
 							) : (
 								<Paperclip className="h-4 w-4 text-neutral-500" />
 							)}
 						</Button>
 					</TooltipTrigger>
-					<TooltipContent>Attach a PDF</TooltipContent>
+					<TooltipContent>
+						{uploading > 0
+							? `Uploading ${uploading} file${uploading === 1 ? "" : "s"}…`
+							: "Attach PDFs — add as many as the matter needs"}
+					</TooltipContent>
 				</Tooltip>
 
 				<input
 					ref={fileInputRef}
 					type="file"
 					accept=".pdf,application/pdf"
+					multiple
 					className="hidden"
 					onChange={handleFileChange}
 				/>
@@ -93,12 +105,10 @@ export function ChatInput({
 					onChange={(e) => setValue(e.target.value)}
 					onInput={handleInput}
 					onKeyDown={handleKeyDown}
-					placeholder={
-						documentCount === 0
-							? "Upload a document to get started…"
-							: "Ask a question about this document…"
-					}
+					placeholder={placeholder}
 					rows={1}
+					// leading-6 with matching min-height: the previous value clipped
+					// descenders on the placeholder at the default line height.
 					className="max-h-[200px] min-h-[24px] flex-1 resize-none self-center bg-transparent text-sm leading-6 text-neutral-800 placeholder-neutral-400 outline-none"
 					disabled={disabled}
 				/>

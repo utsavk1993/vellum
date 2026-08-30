@@ -28,6 +28,7 @@ class DocumentInfo(BaseModel):
     id: str
     filename: str
     page_count: int
+    has_text: bool
     uploaded_at: datetime
 
     model_config = {"from_attributes": True}

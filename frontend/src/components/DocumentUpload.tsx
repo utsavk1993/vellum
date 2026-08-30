@@ -2,17 +2,15 @@ import { Loader2, Upload } from "lucide-react";
 import { type DragEvent, useCallback, useRef, useState } from "react";
 
 interface DocumentUploadProps {
-	onUpload: (file: File) => void;
+	onUpload: (files: File[]) => void;
 	uploading?: boolean;
 }
 
-function firstPdf(list: FileList | null): File | null {
-	return (
-		Array.from(list ?? []).find(
-			(file) =>
-				file.type === "application/pdf" ||
-				file.name.toLowerCase().endsWith(".pdf"),
-		) ?? null
+function pdfsFrom(list: FileList | null): File[] {
+	return Array.from(list ?? []).filter(
+		(file) =>
+			file.type === "application/pdf" ||
+			file.name.toLowerCase().endsWith(".pdf"),
 	);
 }
 
@@ -27,16 +25,16 @@ export function DocumentUpload({
 		(e: DragEvent) => {
 			e.preventDefault();
 			setDragOver(false);
-			const file = firstPdf(e.dataTransfer.files);
-			if (file) onUpload(file);
+			const files = pdfsFrom(e.dataTransfer.files);
+			if (files.length > 0) onUpload(files);
 		},
 		[onUpload],
 	);
 
 	const handleFileChange = useCallback(
 		(e: React.ChangeEvent<HTMLInputElement>) => {
-			const file = firstPdf(e.target.files);
-			if (file) onUpload(file);
+			const files = pdfsFrom(e.target.files);
+			if (files.length > 0) onUpload(files);
 			if (fileInputRef.current) fileInputRef.current.value = "";
 		},
 		[onUpload],
@@ -65,6 +63,7 @@ export function DocumentUpload({
 				ref={fileInputRef}
 				type="file"
 				accept=".pdf,application/pdf"
+				multiple
 				className="hidden"
 				onChange={handleFileChange}
 			/>
@@ -73,17 +72,20 @@ export function DocumentUpload({
 				<div className="flex flex-col items-center">
 					<Loader2 className="mb-3 h-9 w-9 animate-spin text-neutral-400" />
 					<p className="text-sm font-medium text-neutral-600">
-						Reading the document…
+						Indexing documents…
+					</p>
+					<p className="mt-1 text-xs text-neutral-400">
+						Extracting text page by page
 					</p>
 				</div>
 			) : (
 				<div className="flex flex-col items-center">
 					<Upload className="mb-3 h-9 w-9 text-neutral-400" />
 					<p className="text-sm font-medium text-neutral-600">
-						Drop a PDF here
+						Drop the deal documents here
 					</p>
 					<p className="mt-1 text-xs text-neutral-400">
-						A lease, a title report, a survey
+						Several PDFs at once — lease, title report, surveys
 					</p>
 				</div>
 			)}
