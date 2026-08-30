@@ -56,10 +56,14 @@ class Message(Base):
     conversation_id: Mapped[str] = mapped_column(ForeignKey("conversations.id", ondelete="CASCADE"))
     role: Mapped[str] = mapped_column(String)  # "user", "assistant", "system"
     content: Mapped[str] = mapped_column(Text)
-    sources_cited: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     conversation: Mapped[Conversation] = relationship(back_populates="messages")
+    citations: Mapped[list[Citation]] = relationship(
+        back_populates="message",
+        cascade="all, delete-orphan",
+        order_by="Citation.ordinal",
+    )
 
 
 class Document(Base):
@@ -110,3 +114,25 @@ class DocumentPage(Base):
     )
 
     document: Mapped[Document] = relationship(back_populates="pages")
+
+
+class Citation(Base):
+    """A claim's supporting quote, checked against the source page before it is stored.
+
+    `verified` is the honest replacement for the old regex-counted `sources_cited`:
+    it is True only when the quoted span was actually found in the cited page's text.
+    """
+
+    __tablename__ = "citations"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_new_id)
+    message_id: Mapped[str] = mapped_column(ForeignKey("messages.id", ondelete="CASCADE"))
+    # Footnote number as rendered in the answer, 1-based and stable per message.
+    ordinal: Mapped[int] = mapped_column(Integer)
+    document_id: Mapped[str] = mapped_column(ForeignKey("documents.id", ondelete="CASCADE"))
+    page_number: Mapped[int] = mapped_column(Integer)
+    quote: Mapped[str] = mapped_column(Text)
+    verified: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+    message: Mapped[Message] = relationship(back_populates="citations")

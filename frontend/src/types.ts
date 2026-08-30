@@ -16,12 +16,22 @@ export interface Document {
 	uploaded_at: string;
 }
 
+export interface Citation {
+	ordinal: number;
+	document_id: string;
+	page_number: number;
+	quote: string;
+	/** Set by the server after checking the quote against the cited page's text. */
+	verified: boolean;
+}
+
 export interface Message {
 	id: string;
 	conversation_id: string;
 	role: "user" | "assistant" | "system";
 	content: string;
 	created_at: string;
+	citations: Citation[];
 }
 
 export interface ConversationDetail
