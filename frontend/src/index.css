@@ -133,3 +133,40 @@ body {
 	background-color: #fafafa;
 	font-weight: 600;
 }
+
+/* Inline citation markers. The server leaves "[n]" in the prose; the client swaps each
+   one whose citation exists for a marker, so the evidence sits beside the claim it
+   supports. Styled as a superscript chip rather than a link — it points at a page of a
+   document already on screen, it does not navigate. */
+.prose [data-citation] {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 1.2em;
+	height: 1.2em;
+	margin: 0 0.12em;
+	padding: 0 0.3em;
+	border-radius: 0.3em;
+	font-family: ui-monospace, SFMono-Regular, monospace;
+	font-size: 0.7em;
+	font-weight: 600;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+	vertical-align: super;
+	color: #ffffff;
+}
+
+/* Verified and unverified must differ by more than a hue: the tooltip spells the
+   outcome out, and the expanded source list carries an icon as well. */
+.prose [data-citation="verified"] {
+	background-color: #047857;
+}
+
+.prose [data-citation="unverified"] {
+	background-color: #b45309;
+}
+
+.prose [data-citation]:focus-visible {
+	outline: 2px solid #047857;
+	outline-offset: 2px;
+}

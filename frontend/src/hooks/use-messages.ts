@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import * as api from "../lib/api";
-import type { Message } from "../types";
+import type { Citation, Message } from "../types";
 
 /**
  * The transcript for one conversation, plus the in-flight answer.
@@ -14,6 +14,9 @@ export function useMessages(conversationId: string | null) {
 	const [error, setError] = useState<string | null>(null);
 	const [streaming, setStreaming] = useState(false);
 	const [streamingContent, setStreamingContent] = useState("");
+	// Citations arrive mid-answer, each already carrying the server's verdict, so the
+	// marker can render in its final state the moment it appears.
+	const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
 
 	const refresh = useCallback(async () => {
 		if (!conversationId) {
@@ -33,6 +36,7 @@ export function useMessages(conversationId: string | null) {
 
 	useEffect(() => {
 		setStreamingContent("");
+		setStreamingCitations([]);
 		refresh();
 	}, [refresh]);
 
@@ -46,10 +50,12 @@ export function useMessages(conversationId: string | null) {
 				role: "user",
 				content,
 				created_at: new Date().toISOString(),
+				citations: [],
 			};
 			setMessages((prev) => [...prev, optimistic]);
 			setStreaming(true);
 			setStreamingContent("");
+			setStreamingCitations([]);
 			setError(null);
 
 			try {
@@ -77,9 +83,15 @@ export function useMessages(conversationId: string | null) {
 
 						if (event.type === "content") {
 							setStreamingContent((prev) => prev + event.content);
+						} else if (event.type === "citation") {
+							setStreamingCitations((prev) => [
+								...prev,
+								event.citation as Citation,
+							]);
 						} else if (event.type === "message") {
 							setMessages((prev) => [...prev, event.message as Message]);
 							setStreamingContent("");
+							setStreamingCitations([]);
 						}
 					}
 				}
@@ -88,6 +100,7 @@ export function useMessages(conversationId: string | null) {
 			} finally {
 				setStreaming(false);
 				setStreamingContent("");
+				setStreamingCitations([]);
 				refresh();
 			}
 		},
@@ -100,6 +113,7 @@ export function useMessages(conversationId: string | null) {
 		error,
 		streaming,
 		streamingContent,
+		streamingCitations,
 		send,
 		refresh,
 	};
