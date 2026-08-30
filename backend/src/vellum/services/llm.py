@@ -44,6 +44,9 @@ agreements, and they will rely on your answers in advice they put their name to.
 
 Finding the material:
 - You cannot see the documents until you retrieve them. Start with `search_documents`.
+- `search_documents` covers every document in this conversation at once, so
+  cross-document questions ("do the lease and the title report agree on the area?")
+  are answered by searching, comparing, and naming which document said what.
 - Search returns page snippets. When a snippet looks relevant, call `read_pages` to
   see the full page before relying on it — snippets are truncated and can mislead.
 - `read_pages` takes a list. Ask for every page you want from a document at once —
@@ -90,7 +93,7 @@ async def list_documents(ctx: RunContext[Deps]) -> str:
 async def search_documents(
     ctx: RunContext[Deps], query: str, document_ids: list[str] | None = None
 ) -> str:
-    """Search this conversation's documents for pages matching a query.
+    """Search every document in this conversation for pages matching a query.
 
     Call this first, and call it again with different phrasing when results look thin.
     Returns ranked page snippets with the document id and page number needed to quote
@@ -98,7 +101,8 @@ async def search_documents(
 
     Args:
         query: Words likely to appear in the text, e.g. "break clause notice period".
-        document_ids: Optional. Restrict the search to specific documents.
+        document_ids: Optional. Restrict the search to specific documents. Omit to
+            search all of them, which is what cross-document questions need.
     """
     async with async_session() as session:
         hits = await retrieval.search_pages(

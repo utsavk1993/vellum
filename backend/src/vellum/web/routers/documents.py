@@ -23,6 +23,7 @@ class DocumentOut(BaseModel):
     conversation_id: str
     filename: str
     page_count: int
+    has_text: bool
     uploaded_at: datetime
 
     model_config = {"from_attributes": True}
@@ -36,7 +37,7 @@ async def list_documents_endpoint(
     conversation_id: str,
     session: AsyncSession = Depends(get_session),
 ) -> list[DocumentOut]:
-    """List the documents attached to a conversation."""
+    """List every document attached to a conversation."""
     conversation = await get_conversation(session, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
@@ -55,25 +56,28 @@ async def upload_document_endpoint(
     file: UploadFile,
     session: AsyncSession = Depends(get_session),
 ) -> DocumentOut:
-    """Upload a PDF into a conversation."""
+    """Upload a PDF into a conversation.
+
+    A conversation holds as many documents as the matter needs; the agent retrieves
+    across all of them, so adding a title report next to a lease is what makes
+    cross-document questions answerable.
+    """
     conversation = await get_conversation(session, conversation_id)
     if conversation is None:
         raise HTTPException(status_code=404, detail="Conversation not found")
-
-    # One document per conversation for now: the whole extracted text is pushed into
-    # the prompt, and a second document would not fit alongside the first.
-    existing = await list_documents(session, conversation_id)
-    if existing:
-        raise HTTPException(
-            status_code=400,
-            detail="This conversation already has a document. Start a new one to upload another.",
-        )
 
     try:
         document = await upload_document(session, conversation_id, file)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
 
+    logger.info(
+        "Document uploaded",
+        conversation_id=conversation_id,
+        document_id=document.id,
+        filename=document.filename,
+        has_text=document.has_text,
+    )
     return DocumentOut.model_validate(document)
 
 
@@ -82,7 +86,7 @@ async def serve_document_file(
     document_id: str,
     session: AsyncSession = Depends(get_session),
 ) -> FileResponse:
-    """Serve the raw PDF back, for a viewer to render."""
+    """Serve the raw PDF file for the reader panel."""
     document = await get_document(session, document_id)
     if document is None:
         raise HTTPException(status_code=404, detail="Document not found")

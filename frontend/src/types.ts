@@ -11,6 +11,8 @@ export interface Document {
 	conversation_id: string;
 	filename: string;
 	page_count: number;
+	/** False when the PDF held no extractable text — a scan the agent cannot read. */
+	has_text: boolean;
 	uploaded_at: string;
 }
 
