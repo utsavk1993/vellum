@@ -35,7 +35,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from vellum.web.routers import conversations, documents  # noqa: E402
+from vellum.web.routers import conversations, documents, messages  # noqa: E402
 
 app.include_router(conversations.router)
+app.include_router(messages.router)
 app.include_router(documents.router)
