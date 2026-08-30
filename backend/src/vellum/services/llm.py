@@ -222,11 +222,28 @@ async def generate_title(user_message: str) -> str:
     return title[:97] + "..." if len(title) > 100 else title
 
 
+# Sent back to the model when an answer about documents arrives with no citation tags
+# at all. Emitting them is probabilistic — prompting raises the rate but cannot
+# guarantee it — so the pipeline checks the result and asks again rather than quietly
+# serving an uncited answer.
+CITATION_CORRECTION = """
+
+[SYSTEM CORRECTION — your previous answer contained no <cite> tags, so it was rejected \
+before the user saw it. Write the answer again, the same in substance, but attach a \
+citation tag to every factual claim about a document:
+
+<cite doc="DOCUMENT_ID" page="PAGE_NUMBER">exact text copied from that page</cite>
+
+Writing "cl. 8.1.1" or "(Section 8)" in prose is NOT a citation — only the tag counts. \
+Re-read any page you need the exact wording from. Do not mention this correction.]"""
+
+
 async def chat_with_documents(
     conversation_id: str,
     user_message: str,
     conversation_history: list[dict[str, Any]],
     has_documents: bool,
+    correction: str | None = None,
 ) -> AsyncIterator[str]:
     """Run the agent, yielding text as it is produced."""
     prompt = user_message
@@ -236,6 +253,8 @@ async def chat_with_documents(
             "Tell the user they need to upload one before you can answer questions "
             "about a document.]"
         )
+    if correction:
+        prompt = f"{prompt}\n{correction}"
     if conversation_history:
         prompt = f"{to_transcript(conversation_history)}\n\n{prompt}"
 

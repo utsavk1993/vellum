@@ -17,6 +17,9 @@ export function useMessages(conversationId: string | null) {
 	// Citations arrive mid-answer, each already carrying the server's verdict, so the
 	// marker can render in its final state the moment it appears.
 	const [streamingCitations, setStreamingCitations] = useState<Citation[]>([]);
+	// Set while a rejected answer is being written again, so the interface can say
+	// what is happening instead of appearing to start over for no reason.
+	const [retrying, setRetrying] = useState(false);
 
 	const refresh = useCallback(async () => {
 		if (!conversationId) {
@@ -56,6 +59,7 @@ export function useMessages(conversationId: string | null) {
 			setStreaming(true);
 			setStreamingContent("");
 			setStreamingCitations([]);
+			setRetrying(false);
 			setError(null);
 
 			try {
@@ -83,6 +87,13 @@ export function useMessages(conversationId: string | null) {
 
 						if (event.type === "content") {
 							setStreamingContent((prev) => prev + event.content);
+						} else if (event.type === "restart") {
+							// The server rejected the draft we have been showing and is
+							// writing the answer again. Drop it: leaving it on screen
+							// would stack a replacement underneath a rejected answer.
+							setStreamingContent("");
+							setStreamingCitations([]);
+							setRetrying(true);
 						} else if (event.type === "citation") {
 							setStreamingCitations((prev) => [
 								...prev,
@@ -92,6 +103,7 @@ export function useMessages(conversationId: string | null) {
 							setMessages((prev) => [...prev, event.message as Message]);
 							setStreamingContent("");
 							setStreamingCitations([]);
+							setRetrying(false);
 						}
 					}
 				}
@@ -101,6 +113,7 @@ export function useMessages(conversationId: string | null) {
 				setStreaming(false);
 				setStreamingContent("");
 				setStreamingCitations([]);
+				setRetrying(false);
 				refresh();
 			}
 		},
@@ -114,6 +127,7 @@ export function useMessages(conversationId: string | null) {
 		streaming,
 		streamingContent,
 		streamingCitations,
+		retrying,
 		send,
 		refresh,
 	};

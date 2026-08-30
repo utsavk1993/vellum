@@ -26,6 +26,7 @@ export default function App() {
 		streaming,
 		streamingContent,
 		streamingCitations,
+		retrying,
 		send,
 	} = useMessages(selectedId);
 
@@ -101,6 +102,7 @@ export default function App() {
 					streaming={streaming}
 					streamingContent={streamingContent}
 					streamingCitations={streamingCitations}
+					retrying={retrying}
 					uploading={uploading}
 					conversationId={selectedId}
 					conversationTitle={selected?.title ?? null}
