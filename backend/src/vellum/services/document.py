@@ -10,26 +10,35 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from vellum.config import settings
-from vellum.db.models import Document
+from vellum.db.models import Document, DocumentPage
 
 logger = structlog.get_logger()
 
 
-def extract_text(file_path: str) -> tuple[str, int]:
-    """Pull the text layer out of a PDF, returning it with the page count."""
-    parts: list[str] = []
+def extract_pages(file_path: str) -> list[tuple[int, str]]:
+    """Extract per-page text from a PDF as (page_number, text) pairs, 1-indexed.
+
+    Pages with no extractable text are omitted — a scanned page contributes nothing
+    to retrieval, and an empty row would only pollute the index.
+    """
+    pages: list[tuple[int, str]] = []
     with pymupdf.open(file_path) as doc:
-        for page in doc:
+        for index, page in enumerate(doc):
             text = page.get_text()
             if text.strip():
-                parts.append(text)
-        return "\n\n".join(parts), len(doc)
+                pages.append((index + 1, text))
+    return pages
+
+
+def page_count(file_path: str) -> int:
+    with pymupdf.open(file_path) as doc:
+        return len(doc)
 
 
 async def upload_document(
     session: AsyncSession, conversation_id: str, file: UploadFile
 ) -> Document:
-    """Save a PDF, extract its text, and attach it to the conversation.
+    """Save a PDF, index it page by page, and attach it to the conversation.
 
     Raises ValueError if the file is not a PDF or exceeds the size limit.
     """
@@ -45,8 +54,6 @@ async def upload_document(
         )
 
     original_filename = file.filename or "document.pdf"
-    # Two matters can hold documents with the same name, and the second must not
-    # overwrite the first on disk.
     unique_name = f"{uuid.uuid4().hex}_{original_filename}"
     file_path = os.path.join(settings.upload_dir, unique_name)
 
@@ -55,30 +62,36 @@ async def upload_document(
         f.write(content)
 
     try:
-        text, page_count = extract_text(file_path)
+        pages = extract_pages(file_path)
+        total_pages = page_count(file_path)
     except Exception:
-        # A PDF that cannot be parsed should not take the upload down with it — the
-        # file is on disk, and the failure belongs in the logs rather than in a 500.
         logger.exception("Failed to extract text from PDF", filename=original_filename)
-        text, page_count = "", 0
+        pages, total_pages = [], 0
 
     document = Document(
         conversation_id=conversation_id,
         filename=original_filename,
         file_path=file_path,
-        extracted_text=text,
-        page_count=page_count,
+        page_count=total_pages,
+        has_text=bool(pages),
     )
     session.add(document)
+    await session.flush()
+
+    session.add_all(
+        DocumentPage(document_id=document.id, page_number=number, text=text)
+        for number, text in pages
+    )
     await session.commit()
     await session.refresh(document)
 
     logger.info(
-        "Document uploaded",
+        "Indexed document",
         filename=original_filename,
         document_id=document.id,
-        page_count=page_count,
-        characters=len(text),
+        page_count=total_pages,
+        indexed_pages=len(pages),
+        has_text=document.has_text,
     )
     return document
 
@@ -96,3 +109,13 @@ async def list_documents(session: AsyncSession, conversation_id: str) -> list[Do
         .order_by(Document.uploaded_at)
     )
     return list(result.scalars().all())
+
+
+async def get_page_text(session: AsyncSession, document_id: str, page_number: int) -> str | None:
+    result = await session.execute(
+        select(DocumentPage.text).where(
+            DocumentPage.document_id == document_id,
+            DocumentPage.page_number == page_number,
+        )
+    )
+    return result.scalar_one_or_none()
