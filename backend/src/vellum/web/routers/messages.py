@@ -17,7 +17,7 @@ from vellum.db.session import get_session
 from vellum.services.citations import CitationStreamParser, RawCitation, quote_matches
 from vellum.services.conversation import get_conversation, update_conversation
 from vellum.services.document import get_page_text, list_documents
-from vellum.services.llm import chat_with_documents, generate_title
+from vellum.services.llm import CITATION_CORRECTION, chat_with_documents, generate_title
 
 logger = structlog.get_logger()
 
@@ -164,17 +164,40 @@ async def send_message(
                         }
                     )
 
-        try:
+        async def run(correction: str | None) -> AsyncIterator[str]:
+            """Stream one agent run through the citation parser."""
+            nonlocal parser, visible_text
             async for chunk in chat_with_documents(
                 conversation_id=conversation_id,
                 user_message=body.content,
                 conversation_history=conversation_history,
                 has_documents=bool(documents),
+                correction=correction,
             ):
                 async for event in handle(parser.feed(chunk)):
                     yield event
             async for event in handle(parser.flush()):
                 yield event
+
+        try:
+            async for event in run(correction=None):
+                yield event
+
+            # Emitting citation tags is probabilistic: the model sometimes answers in
+            # conventional legal prose ("cl. 8.1.1") instead, which looks authoritative
+            # and links to nothing. Rather than serve that, ask once more with an
+            # explicit correction. The client discards what it has on `restart`.
+            if documents and visible_text.strip() and not resolved:
+                logger.warning(
+                    "Answer had no citations; retrying with correction",
+                    conversation_id=conversation_id,
+                )
+                parser = CitationStreamParser()
+                visible_text = ""
+                yield sse({"type": "restart", "reason": "no_citations"})
+                async for event in run(correction=CITATION_CORRECTION):
+                    yield event
+
         except Exception:
             logger.exception("Error during LLM streaming", conversation_id=conversation_id)
             if visible_text.strip():

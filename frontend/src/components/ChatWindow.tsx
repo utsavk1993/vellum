@@ -14,6 +14,7 @@ interface ChatWindowProps {
 	streaming: boolean;
 	streamingContent: string;
 	streamingCitations: Citation[];
+	retrying: boolean;
 	uploading: number;
 	conversationId: string | null;
 	conversationTitle: string | null;
@@ -32,6 +33,7 @@ export function ChatWindow({
 	streaming,
 	streamingContent,
 	streamingCitations,
+	retrying,
 	uploading,
 	conversationId,
 	conversationTitle,
@@ -143,7 +145,7 @@ export function ChatWindow({
 						{streaming && !streamingContent && (
 							<div className="flex items-center gap-2 text-sm text-neutral-400">
 								<Loader2 className="h-4 w-4 animate-spin" />
-								Searching the documents…
+								{retrying ? "Re-checking sources…" : "Searching the documents…"}
 							</div>
 						)}
 
