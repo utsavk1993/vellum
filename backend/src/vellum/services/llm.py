@@ -1,19 +1,40 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from dataclasses import dataclass
 from typing import Any
 
 import structlog
-from pydantic_ai import Agent
+from pydantic_ai import Agent, RunContext
 
 from vellum.config import settings  # noqa: F401 — triggers ANTHROPIC_API_KEY export
+from vellum.db.session import async_session
+from vellum.services import document as document_service
+from vellum.services import retrieval
 
 logger = structlog.get_logger()
 
-# How much of a document's text to put in front of the model. Generous, because the
-# whole document is all the model gets — there is no retrieval yet, so anything cut
-# here is simply invisible to it.
-MAX_DOCUMENT_CHARS = 100_000
+# How much of a page the model may pull in one read. Legal pages run long; this is
+# generous enough to capture a full clause and its provisos without inviting the model
+# to work through an entire document one page at a time.
+MAX_PAGE_CHARS = 12_000
+
+# Ceiling on a single batched read, so "read the whole document" cannot swamp context.
+MAX_PAGES_PER_READ = 8
+
+
+@dataclass
+class Deps:
+    """Scope for a run. Only the conversation id — tools open their own DB sessions.
+
+    An ``AsyncSession`` is not safe under concurrent use, and the agent issues tool
+    calls in parallel, so sharing the request's session across tools intermittently
+    fails with 'concurrent operations are not permitted'. Each tool call getting its
+    own short-lived session also frees tools from the request's lifecycle, which
+    matters because the SSE generator outlives the request that started it.
+    """
+
+    conversation_id: str
 
 
 SYSTEM_PROMPT = """\
@@ -21,37 +42,114 @@ You are a document analyst for commercial real estate lawyers doing due diligenc
 They are reviewing leases, title reports, environmental assessments and purchase
 agreements, and they will rely on your answers in advice they put their name to.
 
-- Answer only from the document text you have been given. If it does not address the
-  question, say so plainly. Never answer from general knowledge of how such documents
-  usually read — for these users a confident guess is worse than "the document does not
-  address this".
-- Distinguish what the document says from what it implies. Flag ambiguity where a
-  clause could be read two ways; that judgement is the substance of the work.
-- Refer to the clause or section a statement comes from, so it can be checked.
+Finding the material:
+- You cannot see the documents until you retrieve them. Start with `search_documents`.
+- Search returns page snippets. When a snippet looks relevant, call `read_pages` to
+  see the full page before relying on it — snippets are truncated and can mislead.
+- `read_pages` takes a list. Ask for every page you want from a document at once —
+  [4, 5, 6], not three separate calls — because each call is a round trip the person
+  waiting for the answer pays for.
+- Search again with different wording if the first attempt comes back thin. Terms of
+  art vary: "break clause" may appear as "right to determine", "tenant option to
+  terminate", or "break right".
+
+Answering:
+- Refer to the clause or section a statement comes from, and the page it is on, so it
+  can be checked.
+- If retrieval finds nothing relevant, say so plainly. Never answer a question about a
+  document from general knowledge of how such documents usually read — for these users
+  a confident guess is worse than "the documents do not address this".
+- Distinguish what a document says from what it implies. Flag ambiguity where a clause
+  could be read two ways; that judgement is the substance of the work.
 - Be concise and precise. Lead with the answer, then the supporting detail.
 """
 
 agent = Agent(
     f"anthropic:{settings.llm_model}",
+    deps_type=Deps,
     system_prompt=SYSTEM_PROMPT,
+    retries=2,
 )
 
 
-def build_prompt(user_message: str, documents: list[Any]) -> str:
-    """Put the document text in front of the model, then the question."""
+@agent.tool
+async def list_documents(ctx: RunContext[Deps]) -> str:
+    """List the documents attached to this conversation, with their ids and page counts."""
+    async with async_session() as session:
+        documents = await document_service.list_documents(session, ctx.deps.conversation_id)
     if not documents:
-        return (
-            f"{user_message}\n\n[No documents have been uploaded to this conversation. "
-            "Tell the user they need to upload one before you can answer questions "
-            "about a document.]"
-        )
-
-    sections = [
-        f"--- {doc.filename} ({doc.page_count} pages) ---\n"
-        f"{(doc.extracted_text or '')[:MAX_DOCUMENT_CHARS]}"
+        return "No documents have been uploaded to this conversation."
+    return "\n".join(
+        f"- doc={doc.id} {doc.filename} ({doc.page_count} pages)"
+        + ("" if doc.has_text else " — no extractable text, likely a scan")
         for doc in documents
-    ]
-    return "\n\n".join([*sections, f"Question: {user_message}"])
+    )
+
+
+@agent.tool
+async def search_documents(
+    ctx: RunContext[Deps], query: str, document_ids: list[str] | None = None
+) -> str:
+    """Search this conversation's documents for pages matching a query.
+
+    Call this first, and call it again with different phrasing when results look thin.
+    Returns ranked page snippets with the document id and page number needed to quote
+    or to read the full page.
+
+    Args:
+        query: Words likely to appear in the text, e.g. "break clause notice period".
+        document_ids: Optional. Restrict the search to specific documents.
+    """
+    async with async_session() as session:
+        hits = await retrieval.search_pages(
+            session, ctx.deps.conversation_id, query, document_ids=document_ids
+        )
+    if not hits:
+        return f"No pages matched {query!r}. Try different wording or broader terms."
+
+    lines = [f"{len(hits)} matching page(s) for {query!r}:"]
+    lines.extend(
+        f"- doc={hit.document_id} page={hit.page_number} ({hit.filename})\n  {hit.snippet}"
+        for hit in hits
+    )
+    return "\n".join(lines)
+
+
+@agent.tool
+async def read_pages(ctx: RunContext[Deps], document_id: str, page_numbers: list[int]) -> str:
+    """Read one or more pages of a document in full, before relying on them.
+
+    Ask for every page you need from a document in a single call. Each call is a
+    round trip, and reading pages 4, 5 and 6 one at a time costs three times what
+    asking for [4, 5, 6] costs.
+
+    Args:
+        document_id: The document id from search results.
+        page_numbers: 1-based page numbers, e.g. [7] or [4, 5, 6].
+    """
+    if not page_numbers:
+        return "No page numbers given."
+
+    # Bound the request: a whole large document in one call would swamp the context
+    # and defeats the point of retrieving.
+    wanted = list(dict.fromkeys(page_numbers))[:MAX_PAGES_PER_READ]
+
+    async with async_session() as session:
+        pages = {
+            number: await document_service.get_page_text(session, document_id, number)
+            for number in wanted
+        }
+
+    sections: list[str] = []
+    for number, text in pages.items():
+        if text is None:
+            sections.append(
+                f"--- {document_id} page {number} ---\n"
+                "No such page, or it holds no extractable text (a scanned page)."
+            )
+        else:
+            sections.append(f"--- {document_id} page {number} ---\n{text[:MAX_PAGE_CHARS]}")
+    return "\n\n".join(sections)
 
 
 def to_transcript(history: list[dict[str, Any]]) -> str:
@@ -63,26 +161,30 @@ async def generate_title(user_message: str) -> str:
     """Generate a 3-5 word conversation title from the first user message."""
     result = await agent.run(
         f"Generate a concise 3-5 word title for a conversation that starts with: "
-        f"{user_message!r}. Return only the title, nothing else."
+        f"{user_message!r}. Return only the title, nothing else.",
+        deps=Deps(conversation_id=""),
     )
     title = str(result.output).strip().strip('"').strip("'")
     return title[:97] + "..." if len(title) > 100 else title
 
 
 async def chat_with_documents(
+    conversation_id: str,
     user_message: str,
     conversation_history: list[dict[str, Any]],
-    documents: list[Any],
+    has_documents: bool,
 ) -> AsyncIterator[str]:
-    """Run the agent, yielding text as it is produced.
-
-    Streaming is not a nicety here: a due-diligence answer takes tens of seconds, and
-    watching it arrive is the difference between "thinking" and "hung".
-    """
-    prompt = build_prompt(user_message, documents)
+    """Run the agent, yielding text as it is produced."""
+    prompt = user_message
+    if not has_documents:
+        prompt = (
+            f"{user_message}\n\n[No documents have been uploaded to this conversation. "
+            "Tell the user they need to upload one before you can answer questions "
+            "about a document.]"
+        )
     if conversation_history:
         prompt = f"{to_transcript(conversation_history)}\n\n{prompt}"
 
-    async with agent.run_stream(prompt) as stream:
+    async with agent.run_stream(prompt, deps=Deps(conversation_id=conversation_id)) as stream:
         async for chunk in stream.stream_text(delta=True):
             yield chunk

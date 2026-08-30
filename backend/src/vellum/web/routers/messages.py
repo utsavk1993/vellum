@@ -107,9 +107,10 @@ async def send_message(
 
         try:
             async for chunk in chat_with_documents(
+                conversation_id=conversation_id,
                 user_message=body.content,
                 conversation_history=conversation_history,
-                documents=documents,
+                has_documents=bool(documents),
             ):
                 visible_text += chunk
                 yield sse({"type": "content", "content": chunk})
