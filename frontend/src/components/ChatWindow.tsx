@@ -19,6 +19,8 @@ interface ChatWindowProps {
 	conversationTitle: string | null;
 	onSend: (content: string) => void;
 	onUpload: (files: File[]) => void;
+	onCitationClick: (citation: Citation) => void;
+	onDocumentClick: (documentId: string) => void;
 	onNewConversation: () => void;
 }
 
@@ -35,6 +37,8 @@ export function ChatWindow({
 	conversationTitle,
 	onSend,
 	onUpload,
+	onCitationClick,
+	onDocumentClick,
 	onNewConversation,
 }: ChatWindowProps) {
 	const bottomRef = useRef<HTMLDivElement>(null);
@@ -72,10 +76,12 @@ export function ChatWindow({
 				{documents.length > 0 && (
 					<div className="flex min-w-0 items-center gap-1.5 overflow-x-auto">
 						{documents.map((document) => (
-							<span
+							<button
 								key={document.id}
+								type="button"
+								onClick={() => onDocumentClick(document.id)}
 								title={`${document.filename} · ${document.page_count} pages`}
-								className="flex flex-shrink-0 items-center gap-1 rounded-md border border-neutral-200 px-2 py-0.5 text-xs text-neutral-500"
+								className="flex flex-shrink-0 items-center gap-1 rounded-md border border-neutral-200 px-2 py-0.5 text-xs text-neutral-500 transition-colors hover:border-neutral-400 hover:text-neutral-800"
 							>
 								<FileText className="h-3 w-3" />
 								<span className="max-w-[10rem] truncate">
@@ -89,7 +95,7 @@ export function ChatWindow({
 										aria-label="No extractable text"
 									/>
 								)}
-							</span>
+							</button>
 						))}
 					</div>
 				)}
@@ -121,6 +127,7 @@ export function ChatWindow({
 								key={message.id}
 								message={message}
 								documents={documents}
+								onCitationClick={onCitationClick}
 							/>
 						))}
 
@@ -129,6 +136,7 @@ export function ChatWindow({
 								content={streamingContent}
 								citations={streamingCitations}
 								documents={documents}
+								onCitationClick={onCitationClick}
 							/>
 						)}
 
